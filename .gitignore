@@ -1,0 +1,14 @@
+.tmp/
+*.log
+*.bak
+*.swp
+*~
+
+# Keep secrets and volatile app state out of this repo.
+home/.config/Mattermost/secure/
+home/.config/Mattermost/Cookies*
+home/.config/Mattermost/*Cache/
+home/.config/Code/User/globalStorage/
+home/.ssh/
+secrets/
+

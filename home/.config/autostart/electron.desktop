@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=electron
+Comment=electronstartup script
+Exec=/nix/store/yy1xanl99nhxj8h0gvhwp97klswf76m5-electron-unwrapped-40.8.5/libexec/electron/electron
+StartupNotify=false
+Terminal=false

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Mattermost
+Comment=Mattermost Desktop application for Linux
+Exec=env -u ELECTRON_RUN_AS_NODE -u ELECTRON_NO_ATTACH_CONSOLE /run/current-system/sw/bin/mattermost-desktop %U
+Terminal=false
+Type=Application
+MimeType=x-scheme-handler/mattermost;
+Icon=mattermost-desktop
+Categories=Network;InstantMessaging;
+StartupWMClass=Mattermost

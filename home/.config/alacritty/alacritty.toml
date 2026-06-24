@@ -1,0 +1,14 @@
+[keyboard]
+bindings = [
+  # Clipboard shortcuts.
+  { key = "C", mods = "Control|Shift", action = "Copy" },
+  { key = "V", mods = "Control|Shift", action = "Paste" },
+  # RU layout equivalents for the same shortcut positions.
+  # Keep a single RU case to avoid duplicate triggering.
+  { key = "\u0421", mods = "Control|Shift", action = "Copy" },
+  { key = "\u041c", mods = "Control|Shift", action = "Paste" },
+
+  # Fallback shortcuts that do not depend on letter keys/layout.
+  { key = "Insert", mods = "Control", action = "Copy" },
+  { key = "Insert", mods = "Shift", action = "Paste" },
+]

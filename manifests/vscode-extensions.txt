@@ -1,0 +1,9 @@
+bierner.markdown-mermaid
+catppuccin.catppuccin-vsc
+esbenp.prettier-vscode
+ms-python.debugpy
+ms-python.python
+ms-python.vscode-pylance
+ms-python.vscode-python-envs
+openai.chatgpt
+rvest.vs-code-prettier-eslint

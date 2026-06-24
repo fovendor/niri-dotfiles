@@ -1,0 +1,10 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Type=Application
+Name=AmneziaVPN
+Version=1.0
+Comment=Client of your self-hosted VPN
+Exec=env QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 AmneziaVPN
+Icon=/nix/store/3mxvpkk10df69al2gv8dx7cl9ahcnwxn-amnezia-vpn-4.8.11.4/share/pixmaps/AmneziaVPN.png
+Categories=Network;Qt;Security;
+Terminal=false

@@ -1,0 +1,36 @@
+{
+  "version": 4,
+  "servers": [
+    {
+      "name": "2UP",
+      "url": "https://talk.2up.dev/",
+      "order": 0
+    }
+  ],
+  "showTrayIcon": true,
+  "trayIconTheme": "use_system",
+  "minimizeToTray": false,
+  "notifications": {
+    "flashWindow": 0,
+    "bounceIcon": true,
+    "bounceIconType": "informational"
+  },
+  "showUnreadBadge": true,
+  "useSpellChecker": true,
+  "enableHardwareAcceleration": true,
+  "autostart": true,
+  "hideOnStart": false,
+  "spellCheckerLocales": [],
+  "darkMode": false,
+  "lastActiveServer": 0,
+  "downloadLocation": "/home/fovendor/Downloads",
+  "startInFullscreen": false,
+  "logLevel": "info",
+  "enableMetrics": true,
+  "enableSentry": true,
+  "viewLimit": 15,
+  "themeSyncing": true,
+  "alwaysClose": true,
+  "autoCheckForUpdates": false,
+  "skippedVersions": []
+}

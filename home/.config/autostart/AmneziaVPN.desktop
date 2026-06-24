@@ -1,0 +1,8 @@
+[Desktop Entry]
+Exec=AmneziaVPN
+Type=Application
+Name=AmneziaVPN
+Comment=Client of your self-hosted VPN
+Icon=AmneziaVPN
+Categories=Network;Qt;Security;
+Terminal=false

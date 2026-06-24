@@ -1,0 +1,29 @@
+[Added Associations]
+video/mp4=mpv-3.desktop;mpv-2.desktop;
+x-scheme-handler/tg=org.telegram.desktop.desktop;
+x-scheme-handler/tonsite=org.telegram.desktop.desktop;
+image/png=qimgv.desktop;
+image/svg+xml=qimgv.desktop;
+image/jpeg=qimgv.desktop;
+application/x-ole-storage=mpv.desktop;
+text/plain=code.desktop;
+application/zip=peazip.desktop;
+model/stl=blender.desktop;
+application/pdf=org.gnome.Evince.desktop;
+
+[Default Applications]
+text/html=google-chrome.desktop
+video/mp4=mpv-3.desktop;
+x-scheme-handler/about=google-chrome.desktop
+x-scheme-handler/http=google-chrome.desktop
+x-scheme-handler/https=google-chrome.desktop
+x-scheme-handler/tg=org.telegram.desktop.desktop
+x-scheme-handler/tonsite=org.telegram.desktop.desktop
+x-scheme-handler/unknown=google-chrome.desktop
+image/png=qimgv.desktop
+image/svg+xml=qimgv.desktop
+image/jpeg=qimgv.desktop
+x-scheme-handler/mattermost=Mattermost.desktop
+text/plain=code.desktop
+application/zip=peazip.desktop
+application/pdf=org.gnome.Evince.desktop

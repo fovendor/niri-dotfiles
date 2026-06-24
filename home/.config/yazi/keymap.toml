@@ -1,0 +1,6 @@
+[mgr]
+prepend_keymap = [
+  { on = "<Enter>", run = "enter", desc = "Enter directory" },
+  { on = "й", run = "quit", desc = "Quit (RU layout)" },
+  { on = "Й", run = "quit", desc = "Quit (RU layout, Shift)" },
+]
