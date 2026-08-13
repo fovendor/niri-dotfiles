@@ -2,20 +2,17 @@
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 
 
-def niri_msg(*args, json_output=False, check=False):
+def niri_msg(*args, json_output=False):
     cmd = ["niri", "msg"]
     if json_output:
         cmd.append("-j")
     cmd.extend(args)
-
-    proc = subprocess.run(cmd, text=True, capture_output=True)
-    if check and proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd, proc.stdout, proc.stderr)
-    return proc
+    return subprocess.run(cmd, text=True, capture_output=True)
 
 
 def action(*args):
@@ -33,21 +30,47 @@ def load_json(*args):
         return None
 
 
-def current_column(windows, focused):
-    focused_x = focused.get("layout", {}).get("pos_in_scrolling_layout", [None])[0]
-    if focused_x is None:
-        return None, []
+def workspace_columns(windows, focused):
+    columns = {}
+    for window in windows:
+        position = window.get("layout", {}).get("pos_in_scrolling_layout")
+        if (
+            window.get("is_floating")
+            or window.get("workspace_id") != focused.get("workspace_id")
+            or not position
+        ):
+            continue
+        columns.setdefault(position[0], []).append(window)
 
-    columns = sorted(
-        {
-            window.get("layout", {}).get("pos_in_scrolling_layout", [None])[0]
-            for window in windows
-            if not window.get("is_floating")
-            and window.get("workspace_id") == focused.get("workspace_id")
-            and window.get("layout", {}).get("pos_in_scrolling_layout")
-        }
+    return sorted(columns.items())
+
+
+def nearest_neighbor(windows, focused):
+    position = focused.get("layout", {}).get("pos_in_scrolling_layout")
+    if not position:
+        return None
+
+    focused_x = position[0]
+    columns = workspace_columns(windows, focused)
+    column_positions = [column_x for column_x, _ in columns]
+    if focused_x not in column_positions:
+        return None
+
+    index = column_positions.index(focused_x)
+    if index + 1 < len(columns):
+        neighbor_windows = columns[index + 1][1]
+    elif index > 0:
+        neighbor_windows = columns[index - 1][1]
+    else:
+        return None
+
+    # Width is a property of the whole column, so any window id in it can target it.
+    return min(
+        neighbor_windows,
+        key=lambda window: window.get("layout", {}).get(
+            "pos_in_scrolling_layout", [0, 0]
+        )[1],
     )
-    return focused_x, columns
 
 
 def preset_column_widths():
@@ -90,30 +113,103 @@ def output_width(workspace_id):
         ),
         None,
     )
-    if not output_name:
-        return None
-
-    logical = outputs.get(output_name, {}).get("logical")
-    if not logical:
-        return None
-
-    return logical.get("width")
+    logical = outputs.get(output_name, {}).get("logical") if output_name else None
+    return logical.get("width") if logical else None
 
 
 def tile_width(window):
     tile_size = window.get("layout", {}).get("tile_size")
-    if not tile_size:
-        return None
-    return int(round(tile_size[0]))
+    return float(tile_size[0]) if tile_size else None
 
 
-def nearest_preset_index(window, presets, width):
-    window_width = tile_width(window)
-    if window_width is None or width is None or width <= 0:
+def next_preset(window, presets, width):
+    current_width = tile_width(window)
+    if current_width is None or width is None or width <= 0:
         return None
 
-    ratio = window_width / width
-    return min(range(len(presets)), key=lambda idx: abs(presets[idx] - ratio))
+    current_ratio = current_width / width
+    current_index = min(
+        range(len(presets)), key=lambda index: abs(presets[index] - current_ratio)
+    )
+    return presets[(current_index + 1) % len(presets)]
+
+
+def width_request(window_id, proportion):
+    return {
+        "Action": {
+            "SetWindowWidth": {
+                "id": int(window_id),
+                # niri-ipc represents proportions as percentages (50.0 means 50%).
+                "change": {"SetProportion": proportion * 100},
+            }
+        }
+    }
+
+
+def send_widths_over_ipc(widths):
+    """Queue all width changes before waiting for any reply.
+
+    niri handles one regular request per socket. Connecting every socket first and
+    sending all requests before reading replies lets the compositor start both
+    animations in the same render cycle, without changing focus in between.
+    """
+    socket_path = os.environ.get("NIRI_SOCKET")
+    if not socket_path:
+        return False
+
+    connections = []
+    try:
+        for _ in widths:
+            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            connection.settimeout(2)
+            connection.connect(socket_path)
+            connections.append(connection)
+
+        for connection, (window_id, proportion) in zip(connections, widths):
+            payload = json.dumps(
+                width_request(window_id, proportion), separators=(",", ":")
+            )
+            connection.sendall((payload + "\n").encode())
+
+        succeeded = True
+        for connection in connections:
+            response = b""
+            while not response.endswith(b"\n"):
+                chunk = connection.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            try:
+                succeeded = succeeded and "Ok" in json.loads(response)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                succeeded = False
+        return succeeded
+    except OSError:
+        return False
+    finally:
+        for connection in connections:
+            connection.close()
+
+
+def send_widths_with_cli(widths):
+    # This fallback still launches both changes before waiting for either one.
+    processes = [
+        subprocess.Popen(
+            [
+                "niri",
+                "msg",
+                "action",
+                "set-window-width",
+                "--id",
+                str(window_id),
+                f"{proportion * 100:.8g}%",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        for window_id, proportion in widths
+    ]
+    return max(process.wait() for process in processes)
 
 
 def main():
@@ -124,43 +220,22 @@ def main():
     if not focused or not windows or focused.get("is_floating"):
         return action("switch-preset-column-width").returncode
 
-    focused_id = str(focused["id"])
-    focused_x, columns = current_column(windows, focused)
-
-    if focused_x not in columns:
+    neighbor = nearest_neighbor(windows, focused)
+    if neighbor is None:
         return action("switch-preset-column-width").returncode
 
-    index = columns.index(focused_x)
-    if index + 1 < len(columns):
-        neighbor_action = "focus-column-right"
-    elif index > 0:
-        neighbor_action = "focus-column-left"
-    else:
+    width = output_width(focused.get("workspace_id"))
+    focused_proportion = next_preset(focused, presets, width)
+    if focused_proportion is None:
         return action("switch-preset-column-width").returncode
 
-    action("switch-preset-column-width")
-    focused_after_resize = load_json("focused-window")
-    if not focused_after_resize:
+    widths = [
+        (focused["id"], focused_proportion),
+        (neighbor["id"], 1.0 - focused_proportion),
+    ]
+    if send_widths_over_ipc(widths):
         return 0
-
-    width = output_width(focused_after_resize.get("workspace_id"))
-    focused_preset = nearest_preset_index(focused_after_resize, presets, width)
-    if focused_preset is None:
-        return 0
-
-    target_width = 1.0 - presets[focused_preset]
-    target_preset = min(range(len(presets)), key=lambda idx: abs(presets[idx] - target_width))
-
-    focus_neighbor = action(neighbor_action)
-    if focus_neighbor.returncode == 0:
-        for _ in range(len(presets) + 1):
-            neighbor = load_json("focused-window")
-            if nearest_preset_index(neighbor, presets, width) == target_preset:
-                break
-            action("switch-preset-column-width")
-    action("focus-window", "--id", focused_id)
-
-    return 0
+    return send_widths_with_cli(widths)
 
 
 if __name__ == "__main__":
