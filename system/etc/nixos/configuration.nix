@@ -15,6 +15,7 @@ let
     export NIXOS_OZONE_WL="''${NIXOS_OZONE_WL:-1}"
     exec ${pkgs.vscode}/bin/code "$@"
   '');
+  niriAnnotateScreenshot = pkgs.callPackage ./packages/niri-annotate-screenshot.nix {};
   nautilusImagesToPdfScript = pkgs.writeShellScriptBin "nautilus-create-images-pdf" ''
     set -u
 
@@ -715,6 +716,7 @@ in
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
+      ./happ/happ-module.nix
       noctaliaFlake.nixosModules.default
       (homeManagerModule + "/nixos")
       /home/fovendor/.local/share/alien-sperm/flydigi-vader5/nixos/vader5d-module.nix
@@ -774,6 +776,16 @@ in
 
   # Enable networking
   networking.networkmanager.enable = true;
+  networking.networkmanager.plugins = with pkgs; [ networkmanager-l2tp ];
+
+  # Runtime state required by NetworkManager-l2tp and strongSwan.
+  systemd.tmpfiles.rules = [
+    "d /etc/ipsec.d 0700 root root - -"
+  ];
+  environment.etc."strongswan.conf".text = ''
+    charon {
+    }
+  '';
 
   # Set your time zone.
   time.timeZone = "Asia/Yekaterinburg";
@@ -864,6 +876,15 @@ in
   services.tumbler.enable = true;
   services.noctalia-shell.enable = true;
   services.flatpak.enable = true;
+  services.happ = {
+    enable = true;
+    # Happ's bundled Qt Wayland plugins are unstable under wlroots/niri.
+    forceXwayland = true;
+  };
+  virtualisation.virtualbox.host = {
+    enable = true;
+    package = unstablePkgs.virtualbox;
+  };
   hardware.bluetooth.enable = true;
   services.power-profiles-daemon.enable = true;
   services.upower.enable = true;
@@ -872,7 +893,7 @@ in
   users.users.fovendor = {
     isNormalUser = true;
     description = "fovendor";
-    extraGroups = [ "networkmanager" "wheel" ];
+    extraGroups = [ "networkmanager" "wheel" "vboxusers" ];
     packages = with pkgs; [];
   };
 
@@ -901,6 +922,12 @@ in
     montserrat
     nerd-fonts.jetbrains-mono
     nerd-fonts.symbols-only
+    (runCommand "alien-sperm-jura-font" {} ''
+      install -Dm644 ${./fonts/jura/Jura.ttf} \
+        $out/share/fonts/truetype/Jura.ttf
+      install -Dm644 ${./fonts/jura/OFL.txt} \
+        $out/share/doc/alien-sperm-jura-font/OFL.txt
+    '')
   ];
 
   # List packages installed in system profile. To search, run:
@@ -918,9 +945,12 @@ in
     telegram-desktop
     mattermostDesktopPkg
     google-chrome
-    obs-studio
+    (obs-studio.override {
+      cudaSupport = true;
+    })
     ffmpeg
     mpv
+    niriAnnotateScreenshot
     grim
     slurp
     wl-clipboard
@@ -968,6 +998,12 @@ in
     btop
     blender
     evince
+    qgis
+    zoom-us
+    nvtopPackages.nvidia
+    qmmp
+    unzip
+    remmina
   ];
 
   environment.pathsToLink = lib.mkAfter [

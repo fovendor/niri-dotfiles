@@ -37,6 +37,7 @@ mkdir -p "$repo_root"/{system/etc/nixos,home/dotfiles,home/.config,home/.local/s
 sudo rsync -a --delete \
   --chown="$(id -u):$(id -g)" \
   --exclude='configuration.nix.bak-*' \
+  --exclude='configuration.nix.~*~' \
   /etc/nixos/ "$repo_root/system/etc/nixos"/
 
 copy_file "$home_dir/.bashrc" "home/dotfiles/.bashrc"
@@ -104,4 +105,3 @@ if command -v codium >/dev/null 2>&1; then
 fi
 
 git -C "$repo_root" status --short
-
