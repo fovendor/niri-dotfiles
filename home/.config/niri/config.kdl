@@ -609,11 +609,8 @@ binds {
     // Mod+Space       { switch-layout "next"; }
     // Mod+Shift+Space { switch-layout "prev"; }
 
-    // Niri screenshot UI freezes the frame before selecting an area.
-    Print { screenshot; }
-
     // Niri capture followed by Satty annotation.
-    Shift+Print { spawn "niri-annotate-screenshot"; }
+    Print { spawn "niri-annotate-screenshot"; }
 
     // Screen Toolkit (Noctalia) recording tools.
     Ctrl+Print { spawn-sh "noctalia-shell ipc call plugin:screen-toolkit toggle"; }
