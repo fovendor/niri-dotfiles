@@ -1,0 +1,199 @@
+--- a/src-tauri/src/codex_config.rs
++++ b/src-tauri/src/codex_config.rs
+@@ -572,6 +572,17 @@
+         })
+ }
+ 
++/// The managed account whose login remains alongside a third-party route.
++/// Validate both workspace and user identity before adopting its refresh token.
++pub(crate) fn preserved_codex_managed_account_id() -> Option<String> {
++    let marker: CodexManagedOAuthLiveAuthMarker =
++        read_json_file(&get_codex_managed_oauth_live_auth_marker_path()).ok()?;
++    let auth: Value = read_json_file(&get_codex_auth_path()).ok()?;
++    codex_auth_matches_recorded_managed_oauth(&auth, &marker.account_id)
++        .ok()?
++        .then_some(marker.account_id)
++}
++
+ /// Verify that a proxied Codex request still uses the exact live access token
+ /// owned by the selected local account. Workspace IDs alone are not sufficient:
+ /// different Team users can share one value.
+--- a/src-tauri/src/services/provider/codex_direct.rs
++++ b/src-tauri/src/services/provider/codex_direct.rs
+@@ -186,6 +186,7 @@
+     let outgoing = match owner
+         .provider()
+         .and_then(managed_account)
++        .or_else(crate::codex_config::preserved_codex_managed_account_id)
+         .filter(|account| target_account.as_ref() != Some(account))
+     {
+         Some(account) => {
+--- a/src-tauri/src/services/provider/codex_login.rs
++++ b/src-tauri/src/services/provider/codex_login.rs
+@@ -253,7 +253,7 @@
+                 stash.put(live);
+             }
+             // 保留登录关闭时第三方路由旁边不留任何 auth.json（写 `{}` 不等于登出）。
+-            (managed || residue || (!preserve && input.live.is_some())).then_some(None)
++            (residue || (!preserve && input.live.is_some())).then_some(None)
+         }
+         AuthTarget::ProxyThirdParty => managed.then_some(None),
+         AuthTarget::Managed { auth } => {
+@@ -269,7 +269,7 @@
+ 
+     // 只算 Codex 会拿来登录的东西（OAuth token、API Key 等），Bedrock 凭据和元数据不算。
+     let login_on_disk = match &auth {
+-        None => native.is_some_and(codex_auth_has_openai_account_material),
++        None => input.live.is_some_and(codex_auth_has_openai_account_material),
+         Some(None) => false,
+         Some(Some(auth)) => codex_auth_has_openai_account_material(auth),
+     };
+@@ -648,11 +648,11 @@
+     }
+ 
+     #[test]
+-    fn managed_logins_are_cleared_and_never_stashed() {
++    fn managed_logins_are_cleared_when_not_preserved_and_never_stashed() {
+         let managed = login("managed");
+         let empty = json!({});
+         for target in [
+-            AuthTarget::ThirdParty { preserve: true },
++            AuthTarget::ThirdParty { preserve: false },
+             AuthTarget::ProxyThirdParty,
+             AuthTarget::Official { row_auth: &empty },
+         ] {
+@@ -666,6 +666,22 @@
+     }
+ 
+     #[test]
++    fn preserved_managed_login_remains_on_disk_without_entering_the_stash() {
++        let managed = login("managed");
++        let plan = plan(AuthInput {
++            live_is_managed: true,
++            ..input(
++                Some(&managed),
++                AuthTarget::ThirdParty { preserve: true },
++                ready(),
++            )
++        });
++        assert_eq!(plan.auth, None);
++        assert_eq!(plan.stash, None);
++        assert!(plan.login_on_disk);
++    }
++
++    #[test]
+     fn the_proxy_never_touches_the_native_login() {
+         let alice = login("alice");
+         let plan = plan(input(Some(&alice), AuthTarget::ProxyThirdParty, ready()));
+--- a/src-tauri/src/services/provider/mod.rs
++++ b/src-tauri/src/services/provider/mod.rs
+@@ -2856,6 +2856,109 @@
+ 
+     #[test]
+     #[serial]
++    fn managed_codex_third_party_roundtrip_preserves_login_and_rotated_tokens() {
++        with_test_home(|state, _| {
++            crate::settings::reload_settings().unwrap();
++            crate::settings::update_settings(crate::settings::AppSettings {
++                preserve_codex_official_auth_on_switch: true,
++                ..Default::default()
++            })
++            .unwrap();
++            tauri::async_runtime::block_on(async {
++                for (account, user) in [
++                    ("acct-a", "user-a"),
++                    ("acct-b", "user-b"),
++                    ("acct-c", "user-c"),
++                ] {
++                    state
++                        .codex_oauth_manager
++                        .add_test_account_with_user_identity(account, "managed-access", user)
++                        .await
++                        .unwrap();
++                }
++            });
++            let a = managed_codex_provider("managed-a", "acct-a");
++            let b = managed_codex_provider("managed-b", "acct-b");
++            let c = managed_codex_provider("managed-c", "acct-c");
++            let mut third = Provider::with_id(
++                "third-party".into(),
++                "2UP".into(),
++                json!({
++                    "auth": {"OPENAI_API_KEY": "sk-third-party"},
++                    "config": "model_provider = \"custom\"\nmodel = \"gpt-6.1-sol\"\n[model_providers.custom]\nname = \"2UP\"\nbase_url = \"https://third.example/v1\"\nwire_api = \"responses\"\n"
++                }),
++                None,
++            );
++            third.category = Some("custom".into());
++            for provider in [&a, &b, &c, &third] {
++                state.db.save_provider("codex", provider).unwrap();
++            }
++            ProviderService::switch(state, AppType::Codex, &a.id).unwrap();
++            for (source, user, next) in [
++                ("acct-a", "user-a", &b),
++                ("acct-b", "user-b", &c),
++                ("acct-c", "user-c", &a),
++            ] {
++                let before = std::fs::read(crate::codex_config::get_codex_auth_path()).unwrap();
++                ProviderService::switch(state, AppType::Codex, &third.id).unwrap();
++                assert_eq!(
++                    std::fs::read(crate::codex_config::get_codex_auth_path()).unwrap(),
++                    before
++                );
++                let config =
++                    std::fs::read_to_string(crate::codex_config::get_codex_config_path()).unwrap();
++                assert!(config.contains("requires_openai_auth = true"));
++                assert!(config.contains("experimental_bearer_token = \"sk-third-party\""));
++                let rotated = format!("cli-refresh-{source}");
++                let id_token = crate::codex_config::test_codex_id_token(user);
++                write_json_file(
++                    &crate::codex_config::get_codex_auth_path(),
++                    &crate::codex_config::codex_managed_oauth_auth_value(
++                        source,
++                        "cli-access",
++                        Some(&id_token),
++                        &rotated,
++                        "2099-01-03T00:00:00Z",
++                    ),
++                )
++                .unwrap();
++                // Simulate obtaining a fresh access token on the later return.
++                // Refresh adoption intentionally invalidates the old cache;
++                // fixture refresh tokens must never reach the real OAuth server.
++                tauri::async_runtime::block_on(
++                    state.codex_oauth_manager.test_cache_access_token(
++                        ProviderService::managed_codex_oauth_account_id(next).unwrap().as_str(),
++                        "fresh-managed-access",
++                    ),
++                );
++                ProviderService::switch(state, AppType::Codex, &next.id).unwrap();
++                assert_eq!(
++                    tauri::async_runtime::block_on(
++                        state
++                            .codex_oauth_manager
++                            .test_refresh_token_for_account(source)
++                    )
++                    .as_deref(),
++                    Some(rotated.as_str())
++                );
++                let saved = state
++                    .db
++                    .get_provider_by_id(&third.id, "codex")
++                    .unwrap()
++                    .unwrap();
++                assert_eq!(
++                    saved.settings_config["auth"]["OPENAI_API_KEY"],
++                    "sk-third-party"
++                );
++                assert!(saved.settings_config["auth"].get("tokens").is_none());
++            }
++            ProviderService::switch(state, AppType::Codex, &third.id).unwrap();
++            assert!(crate::codex_config::get_codex_auth_path().exists());
++        });
++    }
++
++    #[test]
++    #[serial]
+     fn managed_codex_direct_update_adopts_outgoing_cli_rotation_and_commits_target_binding() {
+         with_test_home(|state, _| {
+             crate::settings::reload_settings().expect("reload settings");

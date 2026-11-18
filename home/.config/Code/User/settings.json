@@ -1,4 +1,5 @@
 {
     "workbench.colorTheme": "Catppuccin Frappé",
-    "update.mode": "none"
+    "update.mode": "none",
+    "chatgpt.localeOverride": null
 }

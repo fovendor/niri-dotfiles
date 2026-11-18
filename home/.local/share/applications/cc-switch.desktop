@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=CC Switch
+Comment=Switch AI coding providers and accounts
+Exec=/run/current-system/sw/bin/cc-switch %u
+Icon=cc-switch
+Categories=Development;
+MimeType=x-scheme-handler/ccswitch;
+StartupWMClass=cc-switch
+Terminal=false

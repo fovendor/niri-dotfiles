@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CC Switch URL Handler
+Exec=/run/current-system/sw/bin/cc-switch %u
+Icon=cc-switch
+NoDisplay=true
+Terminal=false
+MimeType=x-scheme-handler/ccswitch;

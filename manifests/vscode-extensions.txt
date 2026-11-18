@@ -6,4 +6,7 @@ ms-python.python
 ms-python.vscode-pylance
 ms-python.vscode-python-envs
 openai.chatgpt
+openai.codex-audio
 rvest.vs-code-prettier-eslint
+yzane.markdown-pdf
+yzhang.markdown-all-in-one

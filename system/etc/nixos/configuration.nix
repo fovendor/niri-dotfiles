@@ -6,16 +6,23 @@
 
 let
   noctaliaFlake = builtins.getFlake "github:noctalia-dev/noctalia-shell/0fcaa49875bf0c994bb5c604320454ef72e6ba8b";
+  llmAgentsFlake = builtins.getFlake "github:numtide/llm-agents.nix/1bd66a577d1f975927ddfed1a30b2cb19dba1ddc";
+  chatgptDesktopPkg = llmAgentsFlake.packages.${pkgs.stdenv.hostPlatform.system}.chatgpt;
   mattermostDesktopPkg = (builtins.getFlake "github:NixOS/nixpkgs/13043924aaa7375ce482ebe2494338e058282925").legacyPackages.${pkgs.stdenv.hostPlatform.system}.mattermost-desktop;
+  yandexBrowserFlake = builtins.getFlake "github:miuirussia/yandex-browser.nix/a0002833425d8c83ed8279ef4cee38b3d4096c82";
+  yandexBrowserPkg = yandexBrowserFlake.packages.${pkgs.stdenv.hostPlatform.system}.yandex-browser-stable;
+  # Keep Godot 4.7.2 on a package set with compatible HarfBuzz.
+  godotPkgs = (builtins.getFlake "github:NixOS/nixpkgs/55bfb4d7437bd4e09ab7cba58a43bd68eb310044").legacyPackages.${pkgs.stdenv.hostPlatform.system};
   niriSessionWithWayland = pkgs.writeShellScript "niri-session-with-wayland" ''
     export NIXOS_OZONE_WL=1
     exec niri-session
   '';
   codeWaylandWrapper = lib.hiPrio (pkgs.writeShellScriptBin "code" ''
     export NIXOS_OZONE_WL="''${NIXOS_OZONE_WL:-1}"
-    exec ${pkgs.vscode}/bin/code "$@"
+    exec ${unstablePkgs.vscode}/bin/code "$@"
   '');
   niriAnnotateScreenshot = pkgs.callPackage ./packages/niri-annotate-screenshot.nix {};
+  ccSwitchPkg = pkgs.callPackage ./packages/cc-switch.nix {};
   nautilusImagesToPdfScript = pkgs.writeShellScriptBin "nautilus-create-images-pdf" ''
     set -u
 
@@ -431,6 +438,20 @@ let
     localSystem = { system = pkgs.stdenv.hostPlatform.system; };
     config = pkgs.config;
   };
+  amneziaVpnPkg = unstablePkgs.amnezia-vpn.overrideAttrs (finalAttrs: _: {
+    version = "5.0.3.0";
+    src = unstablePkgs.fetchFromGitHub {
+      owner = "amnezia-vpn";
+      repo = "amnezia-client";
+      tag = finalAttrs.version;
+      hash = "sha256-ryKvEy4Oj6PP0WTs+XWqHSVInrVhP0tZcQqgs7gHOls=";
+      fetchSubmodules = true;
+      postCheckout = ''
+        git -C "$out" rev-parse --short HEAD > "$out/.git-revision"
+        git -C "$out" show -s --format=%ct HEAD > "$out/.source-date-epoch"
+      '';
+    };
+  });
   homeManagerModule = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz";
 
   nautilusEmblems = pkgs.stdenvNoCC.mkDerivation {
@@ -776,7 +797,10 @@ in
 
   # Enable networking
   networking.networkmanager.enable = true;
-  networking.networkmanager.plugins = with pkgs; [ networkmanager-l2tp ];
+  networking.networkmanager.plugins = with pkgs; [
+    networkmanager-l2tp
+    networkmanager-openconnect
+  ];
 
   # Runtime state required by NetworkManager-l2tp and strongSwan.
   systemd.tmpfiles.rules = [
@@ -938,13 +962,17 @@ in
     papirus-icon-theme
     colloid-icon-theme
     ghostty
+    ccSwitchPkg
     codeWaylandWrapper
-    vscode
-    unstablePkgs.amnezia-vpn
+    unstablePkgs.vscode
+    amneziaVpnPkg
     firefox
-    telegram-desktop
+    unstablePkgs.telegram-desktop
+    chatgptDesktopPkg
+    bubblewrap
     mattermostDesktopPkg
     google-chrome
+    yandexBrowserPkg
     (obs-studio.override {
       cudaSupport = true;
     })
@@ -976,8 +1004,8 @@ in
     sushi
     ffmpegthumbnailer
     gnome-epub-thumbnailer
-    unstablePkgs.godot
-    unstablePkgs.godot-export-templates-bin
+    godotPkgs.godot
+    godotPkgs.godot-export-templates-bin
     peazip
     gnome-text-editor
     gnome-calculator
@@ -991,7 +1019,7 @@ in
     webkitgtk_4_1
     img2pdf
     inkscape
-    krita
+    unstablePkgs.krita
     qimgv
     qbittorrent
     freshfetch
@@ -1004,6 +1032,7 @@ in
     qmmp
     unzip
     remmina
+    vlc
   ];
 
   environment.pathsToLink = lib.mkAfter [
@@ -1031,7 +1060,10 @@ in
   };
 
   programs.amnezia-vpn.enable = true;
-  programs.amnezia-vpn.package = unstablePkgs.amnezia-vpn;
+  programs.amnezia-vpn.package = amneziaVpnPkg;
+
+  # Amnezia invokes these firewall tools by name from its systemd service.
+  systemd.services.AmneziaVPN.path = with pkgs; [ iptables gawk ];
 
   # Electron/Chromium apps (VS Code, etc.) should prefer Wayland in niri sessions.
   environment.sessionVariables = {
@@ -1123,6 +1155,15 @@ in
   # this value at the release version of the first install of this system.
   # Before changing this value read the documentation for this option
   # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
+  services.udev.packages = [
+    (pkgs.writeTextFile {
+      name = "flydigi-apex5-udev-rules";
+      destination = "/lib/udev/rules.d/60-flydigi-apex5.rules";
+      text = ''
+        KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="37d7", ATTRS{idProduct}=="2501", TAG+="uaccess"
+      '';
+    })
+  ];
   services.vader5d.enable = true;
   system.stateVersion = "25.11"; # Did you read the comment?
 

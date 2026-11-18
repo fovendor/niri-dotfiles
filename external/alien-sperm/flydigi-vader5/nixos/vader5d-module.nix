@@ -25,6 +25,27 @@ in {
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [ cfg.package ];
 
+    # Godot/SDL can bind all Vader 5 buttons directly in standard mode.
+    # Xbox Elite emulation reorders the extended button range.
+    environment.etc = lib.mkIf (cfg.configFile == null) {
+      "vader5/config.toml".text = builtins.replaceStrings
+        [ "emulate_elite = true" ]
+        [ "emulate_elite = false" ]
+        (builtins.readFile ../config/config.toml);
+    };
+
+    # uaccess must precede 73-seat-late.rules. extraRules lands in 99-local
+    # and leaves the game without an ACL even though the tag is present.
+    services.udev.packages = [
+      (pkgs.writeTextFile {
+        name = "flydigi-vader5-hid-access";
+        destination = "/lib/udev/rules.d/60-flydigi-vader5.rules";
+        text = ''
+          ACTION=="add|change", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="37d7", ATTRS{idProduct}=="2401", MODE="0660", TAG+="uaccess"
+        '';
+      })
+    ];
+
     services.udev.extraRules = ''
       ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="37d7", ATTRS{idProduct}=="2401", MODE="0660", TAG+="uaccess"
       ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04b4", MODE="0660", TAG+="uaccess"

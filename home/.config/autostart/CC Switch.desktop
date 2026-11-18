@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CC Switch
+Comment=CC Switch startup
+Exec=/run/current-system/sw/bin/cc-switch
+StartupNotify=false
+Terminal=false
